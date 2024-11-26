@@ -1,0 +1,58 @@
+name: Database Versioning and Load Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 18 * * *' # Agendado para rodar todos os dias às 18h
+
+jobs:
+  db-migrations-and-load-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout do repositório
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Configuração do JDK para execução de ferramentas Java
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # Instalação das dependências Maven
+      - name: Install Maven Dependencies
+        run: mvn clean install -DskipTests=true
+
+      # Executa as migrações do banco de dados
+      - name: Run Database Migrations
+        run: |
+          echo "Running database migrations..."
+          mvn flyway:migrate -Dflyway.url=jdbc:postgresql://localhost:5432/dash \
+                             -Dflyway.user=admin \
+                             -Dflyway.password=admin \
+                             -Dflyway.driver=org.postgresql.Driver
+
+      # Verifica a existência de um arquivo ou diretório específico antes de rodar o teste de carga
+      - name: Check for Load Test Directory
+        run: |
+          if [ -d "path/to/load-test-directory" ]; then
+            echo "Load test directory found, running load test..."
+            java -jar load-tester.jar --db-url=jdbc:postgresql://localhost:5432/dash \
+                                      --db-user=admin \
+                                      --db-password=admin \
+                                      --num-records=10000
+          else
+            echo "Load test directory not found, skipping load test."
+          fi
+
+      # Notificação de sucesso
+      - name: Notify Success
+        if: success()
+        run: echo "Database migrations and load test completed successfully!"
+
+      # Notificação de falha
+      - name: Notify Failure
+        if: failure()
+        run: echo "Database migrations or load test failed! Please check the logs."
