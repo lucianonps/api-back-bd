@@ -25,67 +25,23 @@ jobs:
       - name: Install Maven Dependencies
         run: mvn clean install -DskipTests=true
 
-      # Subir o ambiente do Docker usando docker-compose
-      - name: Start Docker Containers
-        run: |
-          echo "Starting database containers with docker-compose..."
-          docker-compose up -d
-
-      # Aguarda o banco estar pronto
-      - name: Wait for Database Ready
-        run: |
-          echo "Waiting for PostgreSQL to be ready..."
-          until docker exec postgresql pg_isready -U admin; do
-            sleep 5
-          done
-
       # Executa as migrações do banco de dados
       - name: Run Database Migrations
-        env:
-          DB_HOST: postgresql # Nome do serviço no docker-compose
-          DB_PORT: 5432
-          DB_USER: admin
-          DB_PASSWORD: admin
         run: |
-          echo "Running database migrations on containerized environment..."
-          mvn flyway:migrate -Dflyway.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/dash \
-                             -Dflyway.user=${DB_USER} \
-                             -Dflyway.password=${DB_PASSWORD}
-
-      # Verificação do estado do banco após migrações
-      - name: Validate Database State
-        env:
-          DB_HOST: postgresql
-          DB_PORT: 5432
-          DB_USER: admin
-          DB_PASSWORD: admin
-        run: |
-          echo "Validating database state after migrations..."
-          mvn flyway:info -Dflyway.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/dash \
-                          -Dflyway.user=${DB_USER} \
-                          -Dflyway.password=${DB_PASSWORD}
+          echo "Running database migrations..."
+          mvn flyway:migrate -Dflyway.url=jdbc:postgresql://localhost:5432/dash \
+                             -Dflyway.user=admin \
+                             -Dflyway.password=admin \
+                             -Dflyway.driver=org.postgresql.Driver
 
       # Teste de carga com inserções em massa
       - name: Run Load Test
-        env:
-          DB_HOST: postgresql
-          DB_PORT: 5432
-          DB_USER: admin
-          DB_PASSWORD: admin
         run: |
-          echo "Running load test with massive inserts..."
-          java -jar load-tester.jar --db-host=${DB_HOST} \
-                                    --db-port=${DB_PORT} \
-                                    --db-user=${DB_USER} \
-                                    --db-password=${DB_PASSWORD} \
+          echo "Running load test..."
+          java -jar load-tester.jar --db-url=jdbc:postgresql://localhost:5432/dash \
+                                    --db-user=admin \
+                                    --db-password=admin \
                                     --num-records=10000
-
-      # Encerrar os containers Docker
-      - name: Stop Docker Containers
-        if: always()
-        run: |
-          echo "Stopping database containers..."
-          docker-compose down
 
       # Notificação de sucesso
       - name: Notify Success
