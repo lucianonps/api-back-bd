@@ -1,0 +1,98 @@
+name: Database Versioning and Load Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 18 * * *' # Agendado para rodar todos os dias às 18h
+
+jobs:
+  db-migrations-and-load-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout do repositório
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Configuração do JDK para execução de ferramentas Java
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # Instalação das dependências Maven
+      - name: Install Maven Dependencies
+        run: mvn clean install -DskipTests=true
+
+      # Subir o ambiente do Docker usando docker-compose
+      - name: Start Docker Containers
+        run: |
+          echo "Starting database containers with docker-compose..."
+          docker-compose up -d
+
+      # Aguarda o banco estar pronto
+      - name: Wait for Database Ready
+        run: |
+          echo "Waiting for PostgreSQL to be ready..."
+          until docker exec postgresql pg_isready -U admin; do
+            sleep 5
+          done
+
+      # Executa as migrações do banco de dados
+      - name: Run Database Migrations
+        env:
+          DB_HOST: postgresql # Nome do serviço no docker-compose
+          DB_PORT: 5432
+          DB_USER: admin
+          DB_PASSWORD: admin
+        run: |
+          echo "Running database migrations on containerized environment..."
+          mvn flyway:migrate -Dflyway.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/dash \
+                             -Dflyway.user=${DB_USER} \
+                             -Dflyway.password=${DB_PASSWORD}
+
+      # Verificação do estado do banco após migrações
+      - name: Validate Database State
+        env:
+          DB_HOST: postgresql
+          DB_PORT: 5432
+          DB_USER: admin
+          DB_PASSWORD: admin
+        run: |
+          echo "Validating database state after migrations..."
+          mvn flyway:info -Dflyway.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/dash \
+                          -Dflyway.user=${DB_USER} \
+                          -Dflyway.password=${DB_PASSWORD}
+
+      # Teste de carga com inserções em massa
+      - name: Run Load Test
+        env:
+          DB_HOST: postgresql
+          DB_PORT: 5432
+          DB_USER: admin
+          DB_PASSWORD: admin
+        run: |
+          echo "Running load test with massive inserts..."
+          java -jar load-tester.jar --db-host=${DB_HOST} \
+                                    --db-port=${DB_PORT} \
+                                    --db-user=${DB_USER} \
+                                    --db-password=${DB_PASSWORD} \
+                                    --num-records=10000
+
+      # Encerrar os containers Docker
+      - name: Stop Docker Containers
+        if: always()
+        run: |
+          echo "Stopping database containers..."
+          docker-compose down
+
+      # Notificação de sucesso
+      - name: Notify Success
+        if: success()
+        run: echo "Database migrations and load test completed successfully!"
+
+      # Notificação de falha
+      - name: Notify Failure
+        if: failure()
+        run: echo "Database migrations or load test failed! Please check the logs."
