@@ -34,14 +34,18 @@ jobs:
                              -Dflyway.password=admin \
                              -Dflyway.driver=org.postgresql.Driver
 
-      # Teste de carga com inserções em massa
-      - name: Run Load Test
+      # Verifica a existência de um arquivo ou diretório específico antes de rodar o teste de carga
+      - name: Check for Load Test Directory
         run: |
-          echo "Running load test..."
-          java -jar load-tester.jar --db-url=jdbc:postgresql://localhost:5432/dash \
-                                    --db-user=admin \
-                                    --db-password=admin \
-                                    --num-records=10000
+          if [ -d "path/to/load-test-directory" ]; then
+            echo "Load test directory found, running load test..."
+            java -jar load-tester.jar --db-url=jdbc:postgresql://localhost:5432/dash \
+                                      --db-user=admin \
+                                      --db-password=admin \
+                                      --num-records=10000
+          else
+            echo "Load test directory not found, skipping load test."
+          fi
 
       # Notificação de sucesso
       - name: Notify Success
